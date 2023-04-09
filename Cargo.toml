@@ -1,0 +1,22 @@
+[package]
+name = "apalis-amqp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+apalis-core = "0.4.0-alpha.6"
+serde = "1"
+serde_json = "1"
+tokio-amqp = "2.0.0"
+deadpool = "0.9.0"
+deadpool-lapin = "0.10.0"
+lapin = "2.1"
+futures = { version = "0.3.17", default-features = true }
+tower = "0.4"
+async-stream = "0.3"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"]}
