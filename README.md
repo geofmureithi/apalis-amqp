@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
         .register(
             WorkerBuilder::new("rango-amigo")
                 .layer(layer_fn(|service| {
-                    AckService::new(amqp_backend.channel().clone(), service)
+                    AckService::new(amqp_backend.channel(), service)
                 }))
                 .with_stream(|worker| amqp_backend.consume(worker.clone()))
                 .build_fn(test_job),
@@ -44,7 +44,10 @@ async fn main() -> Result<()> {
         .run()
         .await
 }
+````
 
 ## License
 
 apalis-amqp is licensed under the Apache license. See the LICENSE file for details.
+
+

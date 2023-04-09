@@ -1,6 +1,6 @@
 [package]
 name = "apalis-amqp"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Message queuing utilities for Rust using apalis and Amqp"
 authors = ["Geoffrey Mureithi <mureithinjuguna@gmail.com>"]
