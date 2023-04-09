@@ -2,8 +2,12 @@
 name = "apalis-amqp"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Message queuing utilities for Rust using apalis and Amqp"
+authors = ["Geoffrey Mureithi <mureithinjuguna@gmail.com>"]
+license = "Apache2.0"
+repository = "https://github.com/geofmureithi/apalis-amqp"
+documentation = "https://docs.rs/apalis-amqp"
+readme = "README.md"
 
 [dependencies]
 apalis-core = "0.4.0-alpha.6"

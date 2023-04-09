@@ -11,7 +11,7 @@ Message queuing utilities for Rust using apalis and AMQP.
 - Integration between apalis and AMQP message queuing systems.
 - Easy creation of AMQP-backed job queues.
 - Simple consumption of AMQP messages as apalis jobs.
-- Supports message acknowledgement and rejection.
+- Supports message acknowledgement and rejection via `tower` layers.
 
 ## Getting started
 
