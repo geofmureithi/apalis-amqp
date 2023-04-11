@@ -19,31 +19,47 @@ Add apalis-amqp to your Cargo.toml file:
 
 ````toml
 [dependencies]
-apalis = "0.4"
+apalis = "0.4.0-alpha.5"
 apalis-amqp = "0.1"
+serde = "1"
 ````
 
 Then add to your main.rs
 
 ````rust
+use apalis::prelude::*;
+use apalis_amqp::AmqpBackend;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TestJob;
+
+impl Job for TestJob {
+    const NAME: &'static str = "TestJob";
+}
+
+async fn test_job(job: TestJob, ctx: JobContext) {
+    dbg!(job);
+    dbg!(ctx);
+}
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let env = std::env::var("AMQP_ADDR")?;
-    let amqp_backend = AmqpBackend::<TestJob>::new_from_addr(&env).await?;
-    let queue = amqp_backend.connect().await?;
+async fn main() {
+    let env = std::env::var("AMQP_ADDR").unwrap();
+    let amqp_backend = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
+    let _queue = amqp_backend.connect().await.unwrap();
+    amqp_backend.push_job(TestJob(42)).await.unwrap();
     Monitor::new()
         .register(
             WorkerBuilder::new("rango-amigo")
-                .layer(layer_fn(|service| {
-                    AckService::new(amqp_backend.channel(), service)
-                }))
                 .with_stream(|worker| amqp_backend.consume(worker.clone()))
                 .build_fn(test_job),
-            )
+        )
         .run()
         .await
+        .unwrap();
 }
+
 ````
 
 ## License
