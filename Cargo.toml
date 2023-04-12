@@ -1,6 +1,6 @@
 [package]
 name = "apalis-amqp"
-version = "0.2.0-alpha.1"
+version = "0.2.0-alpha.2"
 edition = "2021"
 description = "Message queuing utilities for Rust using apalis and Amqp"
 authors = ["Geoffrey Mureithi <mureithinjuguna@gmail.com>"]
@@ -8,6 +8,7 @@ license = "Apache-2.0"
 repository = "https://github.com/geofmureithi/apalis-amqp"
 documentation = "https://docs.rs/apalis-amqp"
 readme = "README.md"
+keywords = ["message", "worker", "amqp" ]
 
 [dependencies]
 async-trait = "0.1"

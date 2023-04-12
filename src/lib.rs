@@ -4,7 +4,8 @@
 
 //! ## Overview
 
-//! `apalis-amqp` is a Rust crate that provides utilities for integrating `apalis` with AMQP message queuing systems. It includes an `AmqpBackend` implementation for use with the pushing and popping jobs, as well as a `AmqpStream` type for consuming messages from an AMQP queue and passing them to `Worker` for processing.
+//! `apalis-amqp` is a Rust crate that provides utilities for integrating `apalis` with AMQP message queuing systems.
+//!  It includes an `AmqpBackend` implementation for use with the pushing and popping jobs, as well as a `MessageQueue<J>` implementation for consuming messages from an AMQP queue and passing them to `Worker` for processing.
 
 //! ## Features
 
@@ -12,6 +13,7 @@
 //! - Easy creation of AMQP-backed job queues.
 //! - Simple consumption of AMQP messages as apalis jobs.
 //! - Supports message acknowledgement and rejection via `tower` layers.
+//! - Supports all apalis middleware such as rate-limiting, timeouts, filtering, sentry, prometheus etc.
 
 //! ## Getting started
 
@@ -20,7 +22,7 @@
 //! ````toml
 //! [dependencies]
 //! apalis = "0.4.0-alpha.8"
-//! apalis-amqp = "0.1"
+//! apalis-amqp = "v0.2.0-alpha.2"
 //! serde = "1"
 //! ````
 
@@ -46,13 +48,12 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     let env = std::env::var("AMQP_ADDR").unwrap();
-//!     let amqp_backend = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
-//!     let _queue = amqp_backend.connect().await.unwrap();
-//!     amqp_backend.push(TestJob(42)).await.unwrap();
+//!     let mq = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
+//!     mq.push(TestJob(42)).await.unwrap();
 //!     Monitor::new()
 //!         .register(
-//!             WorkerBuilder::new("rango-amigfield1")
-//!                 .with_mq(amqp_backend)
+//!             WorkerBuilder::new("rango-amigo")
+//!                 .with_mq(mq)
 //!                 .build_fn(test_job),
 //!         )
 //!         .run()
@@ -148,7 +149,7 @@ impl<J: Job + Serialize + DeserializeOwned + Send + Sync + 'static> MessageQueue
                 let bytes = item.data;
                 let mut job: JobRequest<J> = serde_json::from_slice(&bytes)
                     .map_err(|e| JobStreamError::BrokenPipe(e.into()))?;
-                job.insert(DeliveryTag(item.delivery_tag));
+                job.insert(DeliveryTag(item.delivery_tag)); // requires extensions
                 yield Ok(Some(job));
 
             }

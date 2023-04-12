@@ -4,7 +4,7 @@ Message queuing for Rust using apalis and AMQP.
 
 ## Overview
 
-`apalis-amqp` is a Rust crate that provides utilities for integrating `apalis` with AMQP message queuing systems. It includes an `AmqpBackend` implementation for use with the pushing and popping jobs, as well as a `JobStreamResult<J>` type for consuming messages from an AMQP queue and passing them to `ReadyWorker` for processing.
+`apalis-amqp` is a Rust crate that provides utilities for integrating `apalis` with AMQP message queuing systems. It includes an `AmqpBackend` implementation for use with the pushing and popping jobs, as well as a `MessageQueue<J>` implementation for consuming messages from an AMQP queue and passing them to `ReadyWorker` for processing.
 
 ## Features
 
@@ -12,6 +12,7 @@ Message queuing for Rust using apalis and AMQP.
 - Easy creation of AMQP-backed job queues.
 - Simple consumption of AMQP messages as apalis jobs.
 - Supports message acknowledgement and rejection via `tower` layers.
+- Supports all apalis middleware such as rate-limiting, timeouts, filtering, sentry, prometheus etc.
 
 ## Getting started
 
@@ -28,7 +29,7 @@ docker run -p 15672:15672 -p 5672:5672 -e RABBITMQ_DEFAULT_USER=apalis -e RABBIT
 ````toml
 [dependencies]
 apalis = "0.4.0-alpha.8"
-apalis-amqp = "0.1"
+apalis-amqp = "v0.2.0-alpha.1"
 serde = "1"
 ````
 
