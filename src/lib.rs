@@ -19,7 +19,7 @@
 
 //! ````toml
 //! [dependencies]
-//! apalis = "0.4.0-alpha.5"
+//! apalis = "0.4.0-alpha.7"
 //! apalis-amqp = "0.1"
 //! serde = "1"
 //! ````
@@ -47,12 +47,12 @@
 //! async fn main() {
 //!     let env = std::env::var("AMQP_ADDR").unwrap();
 //!     let amqp_backend = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
-//!     amqp_backend.connect().await.unwrap();
-//!     amqp_backend.push_job(TestJob(42)).await.unwrap();
+//!     let _queue = amqp_backend.connect().await.unwrap();
+//!     amqp_backend.push(TestJob(42)).await.unwrap();
 //!     Monitor::new()
 //!         .register(
 //!             WorkerBuilder::new("rango-amigo")
-//!                 .with_stream(|worker| amqp_backend.consume(worker.clone()))
+//!                 .with_mq(amqp_backend)
 //!                 .build_fn(test_job),
 //!         )
 //!         .run()
@@ -62,35 +62,92 @@
 
 //! ````
 
+mod ack;
+
 use apalis_core::{
-    context::{HasJobContext, JobContext},
     error::{JobError, JobStreamError},
     job::{Job, JobStreamResult},
+    mq::MessageQueue,
     request::JobRequest,
     worker::WorkerId,
 };
 use deadpool_lapin::{Manager, Pool};
-use futures::{future::BoxFuture, StreamExt};
+use futures::StreamExt;
 use lapin::{
-    options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, QueueDeclareOptions},
-    publisher_confirm::Confirmation,
+    options::{BasicConsumeOptions, BasicPublishOptions, QueueDeclareOptions},
     types::FieldTable,
     BasicProperties, Channel, ConnectionProperties, Queue,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    fmt::Debug,
-    marker::PhantomData,
-    task::{Context, Poll},
-};
-use tower::Service;
+use std::{fmt::Debug, marker::PhantomData};
 
 #[derive(Debug)]
 /// A wrapper around a `lapin` AMQP channel that implements message queuing functionality.
 pub struct AmqpBackend<J>(Channel, PhantomData<J>);
 
-/// A stream of jobs produced
-pub type AmqpStream<J> = JobStreamResult<J>;
+impl<J> Clone for AmqpBackend<J> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), PhantomData)
+    }
+}
+
+#[async_trait::async_trait]
+impl<J: Job + Serialize + DeserializeOwned + Send + Sync + 'static> MessageQueue<J>
+    for AmqpBackend<J>
+{
+    /// Publishes a new job to the queue.
+    ///
+    /// This function serializes the provided job data to a JSON string and publishes it to the
+    /// queue with the name of the job type `J::NAME`.
+    async fn push(&self, data: J) -> Result<(), JobError> {
+        let channel = self.0.clone();
+
+        let _confirmation = channel
+            .basic_publish(
+                "",
+                J::NAME,
+                BasicPublishOptions::default(),
+                &serde_json::to_vec(&JobRequest::new(data))
+                    .map_err(|e| JobError::Failed(e.into()))?,
+                BasicProperties::default(),
+            )
+            .await
+            .map_err(|e| JobError::Failed(e.into()))?
+            .await
+            .map_err(|e| JobError::Failed(e.into()))?;
+        Ok(())
+    }
+    /// Consumes jobs from the queue and returns a `BoxStream` of `JobRequest<J>` objects.
+    ///
+    /// This function creates a new asynchronous stream using the `async_stream` crate that
+    /// continuously consumes messages from the queue and converts them to `JobRequest<J>` objects
+    /// using `serde_json::from_slice`.
+    fn consume(&self, worker: &WorkerId) -> JobStreamResult<J> {
+        let channel = self.0.clone();
+        let worker = worker.clone();
+        let stream = async_stream::stream! {
+            let mut consumer = channel
+            .basic_consume(
+                J::NAME,
+                &worker.to_string(),
+                BasicConsumeOptions::default(),
+                FieldTable::default(),
+            )
+            .await
+            .map_err(|e| JobStreamError::BrokenPipe(e.into()))?;
+
+            while let Some(Ok(item)) = consumer.next().await {
+                let bytes = item.data;
+                let mut job: JobRequest<J> = serde_json::from_slice(&bytes)
+                    .map_err(|e| JobStreamError::BrokenPipe(e.into()))?;
+                job.insert(DeliveryTag(item.delivery_tag));
+                yield Ok(Some(job));
+
+            }
+        };
+        stream.boxed()
+    }
+}
 
 #[derive(Debug, Clone)]
 /// A wrapper for the the job to be acknowledged.
@@ -139,120 +196,15 @@ impl<J: Job + Serialize + DeserializeOwned + Send + 'static> AmqpBackend<J> {
             .await?;
         Ok(queue)
     }
-
-    /// Consumes jobs from the queue and returns a `BoxStream` of `JobRequest<J>` objects.
-    ///
-    /// This function creates a new asynchronous stream using the `async_stream` crate that
-    /// continuously consumes messages from the queue and converts them to `JobRequest<J>` objects
-    /// using `serde_json::from_slice`.
-
-    pub fn consume(&self, worker: &WorkerId) -> AmqpStream<J> {
-        let channel = self.0.clone();
-        let worker = worker.clone();
-        let stream = async_stream::stream! {
-            let mut consumer = channel
-            .basic_consume(
-                J::NAME,
-                &worker.to_string(),
-                BasicConsumeOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .map_err(|e| JobStreamError::BrokenPipe(e.into()))?;
-
-            while let Some(Ok(item)) = consumer.next().await {
-                let bytes = item.data;
-                let mut job: JobRequest<J> = serde_json::from_slice(&bytes)
-                    .map_err(|e| JobStreamError::BrokenPipe(e.into()))?;
-                job.insert(DeliveryTag(item.delivery_tag));
-                yield Ok(Some(job));
-
-            }
-        };
-        stream.boxed()
-    }
-
-    /// Publishes a new job to the queue.
-    ///
-    /// This function serializes the provided job data to a JSON string and publishes it to the
-    /// queue with the name of the job type `J::NAME`.
-    pub async fn push_job(&self, data: J) -> Result<Confirmation, JobError> {
-        let channel = self.0.clone();
-
-        let confirmation = channel
-            .basic_publish(
-                "",
-                J::NAME,
-                BasicPublishOptions::default(),
-                &serde_json::to_vec(&JobRequest::new(data))
-                    .map_err(|e| JobError::Failed(e.into()))?,
-                BasicProperties::default(),
-            )
-            .await
-            .map_err(|e| JobError::Failed(e.into()))?
-            .await
-            .map_err(|e| JobError::Failed(e.into()))?;
-        Ok(confirmation)
-    }
-}
-
-/// A middleware that acknowledges a job the forwards it to another service
-pub struct AckService<S> {
-    channel: Channel,
-    service: S,
-}
-
-impl<S> AckService<S> {
-    pub fn new(channel: Channel, service: S) -> Self {
-        Self { channel, service }
-    }
-}
-
-impl<S, Request> Service<Request> for AckService<S>
-where
-    S: Service<Request>,
-    Request: HasJobContext,
-    <S as Service<Request>>::Response: std::marker::Send,
-    <S as Service<Request>>::Error: std::marker::Send + Debug,
-    <S as Service<Request>>::Future: Send + 'static,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = BoxFuture<
-        'static,
-        Result<<S as Service<Request>>::Response, <S as Service<Request>>::Error>,
-    >;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx)
-    }
-
-    fn call(&mut self, request: Request) -> Self::Future {
-        let ctx: &JobContext = request.context();
-        let tag = ctx.data_opt::<DeliveryTag>().cloned();
-        let channel = self.channel.clone();
-        let fut = self.service.call(request);
-
-        Box::pin(async move {
-            let res = fut.await;
-            if let Some(tag) = tag {
-                match channel.basic_ack(tag.0, BasicAckOptions::default()).await {
-                    Ok(_) => tracing::trace!("Successfully acknowledged job"),
-                    Err(e) => tracing::debug!("An error occurred {e}"),
-                }
-            }
-            res
-        })
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use apalis_core::builder::WorkerBuilder;
-    use apalis_core::builder::WorkerFactoryFn;
+    use apalis_core::{
+        builder::WorkerBuilder, builder::WorkerFactoryFn, context::JobContext, mq::WithMq,
+    };
     use serde::Deserialize;
-    use tower::layer::layer_fn;
 
     #[derive(Debug, Serialize, Deserialize)]
     struct TestJob;
@@ -270,10 +222,7 @@ mod tests {
         let _res = amqp_backend.connect().await.unwrap();
 
         let _worker = WorkerBuilder::new("rango-amigo")
-            .layer(layer_fn(|service| {
-                AckService::new(amqp_backend.channel().clone(), service)
-            }))
-            .with_stream(|worker| amqp_backend.consume(worker))
+            .with_mq(amqp_backend)
             .build_fn(test_job);
     }
 }

@@ -1,10 +1,10 @@
 # apalis-amqp
 
-Message queuing utilities for Rust using apalis and AMQP.
+Message queuing for Rust using apalis and AMQP.
 
 ## Overview
 
-`apalis-amqp` is a Rust crate that provides utilities for integrating `apalis` with AMQP message queuing systems. It includes an `AmqpBackend` implementation for use with the pushing and popping jobs, as well as a `AmqpStream` type for consuming messages from an AMQP queue and passing them to `Worker` for processing.
+`apalis-amqp` is a Rust crate that provides utilities for integrating `apalis` with AMQP message queuing systems. It includes an `AmqpBackend` implementation for use with the pushing and popping jobs, as well as a `JobStreamResult<J>` type for consuming messages from an AMQP queue and passing them to `ReadyWorker` for processing.
 
 ## Features
 
@@ -19,7 +19,7 @@ Add apalis-amqp to your Cargo.toml file:
 
 ````toml
 [dependencies]
-apalis = "0.4.0-alpha.5"
+apalis = "0.4.0-alpha.8"
 apalis-amqp = "0.1"
 serde = "1"
 ````
@@ -52,7 +52,7 @@ async fn main() {
     Monitor::new()
         .register(
             WorkerBuilder::new("rango-amigo")
-                .with_stream(|worker| amqp_backend.consume(worker.clone()))
+                .with_mq(amqp_backend)
                 .build_fn(test_job),
         )
         .run()
