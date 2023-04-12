@@ -55,13 +55,12 @@ async fn test_job(job: TestJob, ctx: JobContext) {
 #[tokio::main]
 async fn main() {
     let env = std::env::var("AMQP_ADDR").unwrap();
-    let amqp_backend = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
-    let _queue = amqp_backend.connect().await.unwrap();
-    amqp_backend.push_job(TestJob(42)).await.unwrap();
+    let mq = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
+    mq.push(TestJob(42)).await.unwrap();
     Monitor::new()
         .register(
             WorkerBuilder::new("rango-amigo")
-                .with_mq(amqp_backend)
+                .with_mq(mq)
                 .build_fn(test_job),
         )
         .run()
