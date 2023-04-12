@@ -19,7 +19,7 @@
 
 //! ````toml
 //! [dependencies]
-//! apalis = "0.4.0-alpha.7"
+//! apalis = "0.4.0-alpha.8"
 //! apalis-amqp = "0.1"
 //! serde = "1"
 //! ````
@@ -51,7 +51,7 @@
 //!     amqp_backend.push(TestJob(42)).await.unwrap();
 //!     Monitor::new()
 //!         .register(
-//!             WorkerBuilder::new("rango-amigo")
+//!             WorkerBuilder::new("rango-amigfield1")
 //!                 .with_mq(amqp_backend)
 //!                 .build_fn(test_job),
 //!         )
@@ -83,11 +83,19 @@ use std::{fmt::Debug, marker::PhantomData};
 
 #[derive(Debug)]
 /// A wrapper around a `lapin` AMQP channel that implements message queuing functionality.
-pub struct AmqpBackend<J>(Channel, PhantomData<J>);
+pub struct AmqpBackend<J> {
+    channel: Channel,
+    queue: Queue,
+    job_type: PhantomData<J>,
+}
 
 impl<J> Clone for AmqpBackend<J> {
     fn clone(&self) -> Self {
-        Self(self.0.clone(), PhantomData)
+        Self {
+            channel: self.channel.clone(),
+            queue: self.queue.clone(),
+            job_type: PhantomData,
+        }
     }
 }
 
@@ -100,7 +108,7 @@ impl<J: Job + Serialize + DeserializeOwned + Send + Sync + 'static> MessageQueue
     /// This function serializes the provided job data to a JSON string and publishes it to the
     /// queue with the name of the job type `J::NAME`.
     async fn push(&self, data: J) -> Result<(), JobError> {
-        let channel = self.0.clone();
+        let channel = self.channel.clone();
 
         let _confirmation = channel
             .basic_publish(
@@ -123,7 +131,7 @@ impl<J: Job + Serialize + DeserializeOwned + Send + Sync + 'static> MessageQueue
     /// continuously consumes messages from the queue and converts them to `JobRequest<J>` objects
     /// using `serde_json::from_slice`.
     fn consume(&self, worker: &WorkerId) -> JobStreamResult<J> {
-        let channel = self.0.clone();
+        let channel = self.channel.clone();
         let worker = worker.clone();
         let stream = async_stream::stream! {
             let mut consumer = channel
@@ -155,13 +163,22 @@ pub struct DeliveryTag(u64);
 
 impl<J: Job + Serialize + DeserializeOwned + Send + 'static> AmqpBackend<J> {
     /// Constructs a new instance of `AmqpBackend` from a `lapin` channel.
-    pub fn new(channel: Channel) -> Self {
-        Self(channel, PhantomData)
+    pub fn new(channel: Channel, queue: Queue) -> Self {
+        Self {
+            channel,
+            job_type: PhantomData,
+            queue,
+        }
     }
 
     /// Get a ref to the inner `Channel`
     pub fn channel(&self) -> &Channel {
-        &self.0
+        &self.channel
+    }
+
+    /// Get a ref to the inner `Queue`
+    pub fn queue(&self) -> &Queue {
+        &self.queue
     }
 
     /// Constructs a new instance of `AmqpBackend` from an address string.
@@ -179,22 +196,14 @@ impl<J: Job + Serialize + DeserializeOwned + Send + 'static> AmqpBackend<J> {
             .await
             .map_err(|_e| lapin::Error::ChannelsLimitReached)?;
         let channel = amqp_conn.create_channel().await?;
-        Ok(Self(channel, PhantomData))
-    }
-
-    /// Declares a queue on the channel with the name of the job type `J::NAME`.
-    ///
-    /// Returns a `Queue` object representing the declared queue.
-    pub async fn connect(&self) -> Result<Queue, lapin::Error> {
-        let queue = self
-            .0
+        let queue = channel
             .queue_declare(
                 J::NAME,
                 QueueDeclareOptions::default(),
                 FieldTable::default(),
             )
             .await?;
-        Ok(queue)
+        Ok(Self::new(channel, queue))
     }
 }
 
@@ -218,9 +227,7 @@ mod tests {
     #[tokio::test]
     async fn it_works() {
         let env = std::env::var("AMQP_ADDR").unwrap();
-        let amqp_backend = AmqpBackend::new_from_addr(&env).await.unwrap();
-        let _res = amqp_backend.connect().await.unwrap();
-
+        let amqp_backend = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
         let _worker = WorkerBuilder::new("rango-amigo")
             .with_mq(amqp_backend)
             .build_fn(test_job);
