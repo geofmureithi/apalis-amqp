@@ -17,6 +17,14 @@ Message queuing for Rust using apalis and AMQP.
 
 Add apalis-amqp to your Cargo.toml file:
 
+### Setup RabbitMq
+
+```
+docker run -p 15672:15672 -p 5672:5672 -e RABBITMQ_DEFAULT_USER=apalis -e RABBITMQ_DEFAULT_PASS=apalis  rabbitmq:3.8.4-management
+```
+
+### Setup the rust code
+
 ````toml
 [dependencies]
 apalis = "0.4.0-alpha.8"
