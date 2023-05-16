@@ -1,6 +1,6 @@
 [package]
 name = "apalis-amqp"
-version = "0.2.0-alpha.2"
+version = "0.2.0-alpha.3"
 edition = "2021"
 description = "Message queuing utilities for Rust using apalis and Amqp"
 authors = ["Geoffrey Mureithi <mureithinjuguna@gmail.com>"]
@@ -8,14 +8,13 @@ license = "Apache-2.0"
 repository = "https://github.com/geofmureithi/apalis-amqp"
 documentation = "https://docs.rs/apalis-amqp"
 readme = "README.md"
-keywords = ["message", "worker", "amqp" ]
+keywords = ["message", "worker", "amqp"]
 
 [dependencies]
 async-trait = "0.1"
-apalis-core = "0.4.0-alpha.8"
+apalis-core = { version = "0.4.0-alpha.9", features = ["mq"] }
 serde = "1"
 serde_json = "1"
-tokio-amqp = "2.0.0"
 deadpool = "0.9.0"
 deadpool-lapin = "0.10.0"
 lapin = "2.1"
@@ -25,4 +24,7 @@ async-stream = "0.3"
 tracing = "0.1"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["full"]}
+tokio = { version = "1", features = ["full"] }
+
+[package.metadata.docs.rs]
+cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples=examples"]

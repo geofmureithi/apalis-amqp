@@ -28,8 +28,8 @@ docker run -p 15672:15672 -p 5672:5672 -e RABBITMQ_DEFAULT_USER=apalis -e RABBIT
 
 ````toml
 [dependencies]
-apalis = "0.4.0-alpha.8"
-apalis-amqp = "v0.2.0-alpha.1"
+apalis = "0.4.0-alpha.9"
+apalis-amqp = "v0.2.0-alpha.3"
 serde = "1"
 ````
 
