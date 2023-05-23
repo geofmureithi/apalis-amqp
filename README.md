@@ -1,6 +1,30 @@
-# apalis-amqp
+<h1 align="center">apalis-amqp</h1>
+<div align="center">
+ <strong>
+   Message queuing for Rust using apalis and AMQP.
+ </strong>
+</div>
 
-Message queuing for Rust using apalis and AMQP.
+<br />
+
+<div align="center">
+  <!-- Crates version -->
+  <a href="https://crates.io/crates/apalis-amqp">
+    <img src="https://img.shields.io/crates/v/apalis-amqp.svg?style=flat-square"
+    alt="Crates.io version" />
+  </a>
+  <!-- Downloads -->
+  <a href="https://crates.io/crates/apalis-amqp">
+    <img src="https://img.shields.io/crates/d/apalis-amqp.svg?style=flat-square"
+      alt="Download" />
+  </a>
+  <!-- docs.rs docs -->
+  <a href="https://docs.rs/apalis-amqp">
+    <img src="https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square"
+      alt="docs.rs docs" />
+  </a>
+</div>
+<br/>
 
 ## Overview
 
