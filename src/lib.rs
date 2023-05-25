@@ -21,8 +21,8 @@
 
 //! ````toml
 //! [dependencies]
-//! apalis = "0.4.0-alpha.8"
-//! apalis-amqp = "v0.2.0-alpha.2"
+//! apalis = "0.4"
+//! apalis-amqp = "v0.2"
 //! serde = "1"
 //! ````
 
@@ -62,6 +62,25 @@
 //! }
 
 //! ````
+#![forbid(unsafe_code)]
+#![warn(
+    clippy::await_holding_lock,
+    clippy::cargo_common_metadata,
+    clippy::dbg_macro,
+    clippy::empty_enum,
+    clippy::enum_glob_use,
+    clippy::inefficient_to_string,
+    clippy::mem_forget,
+    clippy::mutex_integer,
+    clippy::needless_continue,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::wildcard_imports,
+    future_incompatible,
+    missing_docs,
+    missing_debug_implementations,
+    unreachable_pub
+)]
 
 mod ack;
 
