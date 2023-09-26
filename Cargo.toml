@@ -16,7 +16,7 @@ async-trait = "0.1"
 apalis-core = { version = "0.4.0", features = ["mq"] }
 serde = "1"
 serde_json = "1"
-deadpool = "0.9.0"
+deadpool = "0.10.0"
 deadpool-lapin = "0.10.0"
 lapin = "2.1"
 futures = { version = "0.3.17", default-features = true }
