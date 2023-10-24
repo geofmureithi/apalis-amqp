@@ -18,7 +18,7 @@ serde = "1"
 serde_json = "1"
 deadpool = "0.10.0"
 deadpool-lapin = "0.10.0"
-lapin = "2.1"
+lapin = "2.3"
 futures = { version = "0.3.28", default-features = true }
 tower = "0.4"
 async-stream = "0.3"
