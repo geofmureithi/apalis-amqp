@@ -50,52 +50,69 @@ docker run -p 15672:15672 -p 5672:5672 -e RABBITMQ_DEFAULT_USER=apalis -e RABBIT
 
 ### Setup the rust code
 
-````toml
+```toml
 [dependencies]
-apalis = "0.4"
-apalis-amqp = "0.2"
+apalis-core = "0.5"
+apalis-amqp = "0.3"
 serde = "1"
-````
+```
 
 Then add to your main.rs
 
-````rust
-use apalis::prelude::*;
+```rust
 use apalis_amqp::AmqpBackend;
+use apalis_core::builder::WorkerFactoryFn;
+use apalis_core::mq::Message;
+use apalis_core::{
+    builder::WorkerBuilder, layers::extensions::Data, monitor::Monitor, mq::MessageQueue,
+} ;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct TestJob;
+mod policy;
 
-impl Job for TestJob {
-    const NAME: &'static str = "TestJob";
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TestMessage(usize);
+
+impl Message for TestMessage {
+    const NAME: &'static str = "TestMessage";
 }
 
-async fn test_job(job: TestJob, ctx: JobContext) {
+async fn test_job(job: TestMessage, count: Data<usize>) {
     dbg!(job);
-    dbg!(ctx);
+    dbg!(count);
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TokioExecutor;
+
+impl apalis_core::executor::Executor for TokioExecutor {
+    fn spawn(&self, future: impl std::future::Future<Output = ()> + Send + 'static) {
+        tokio::spawn(future);
+    }
 }
 
 #[tokio::main]
 async fn main() {
     let env = std::env::var("AMQP_ADDR").unwrap();
-    let mq = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
-    mq.push(TestJob(42)).await.unwrap();
-    Monitor::new()
-        .register(
-            WorkerBuilder::new("rango-amigo")
-                .with_mq(mq)
-                .build_fn(test_job),
-        )
+    let mq = AmqpBackend::<TestMessage>::new_from_addr(&env)
+        .await
+        .unwrap();
+    // add some jobs
+    mq.enqueue(TestMessage(42)).await.unwrap();
+    Monitor::<TokioExecutor>::new()
+        .register_with_count(3, {
+            WorkerBuilder::new(format!("rango-amigo"))
+                .data(0usize)
+                .with_mq(mq.clone())
+                .build_fn(test_job)
+        })
         .run()
         .await
         .unwrap();
 }
 
-````
+```
 
 ## License
 
 apalis-amqp is licensed under the Apache license. See the LICENSE file for details.
-
-

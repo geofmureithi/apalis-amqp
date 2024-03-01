@@ -21,14 +21,14 @@
 
 //! ````toml
 //! [dependencies]
-//! apalis = "0.4"
-//! apalis-amqp = "v0.2"
+//! apalis = { version = "0.5", features = ["tokio-comp"] }
+//! apalis-amqp = "0.3"
 //! serde = "1"
 //! ````
 
 //! Then add to your main.rs
 
-//! ````rust
+//! ````rust,no_run
 //! use apalis::prelude::*;
 //! use apalis_amqp::AmqpBackend;
 //! use serde::{Deserialize, Serialize};
@@ -36,21 +36,28 @@
 //! #[derive(Debug, Serialize, Deserialize)]
 //! struct TestJob(usize);
 
-//! impl Job for TestJob {
+//! impl Message for TestJob {
 //!     const NAME: &'static str = "TestJob";
 //! }
 
-//! async fn test_job(job: TestJob, ctx: JobContext) {
+//! async fn test_job(job: TestJob) {
 //!     dbg!(job);
-//!     dbg!(ctx);
 //! }
-
+//!
+//! #[derive(Clone, Debug, Default)]
+//! pub struct TokioExecutor;
+//!
+//! impl apalis_core::executor::Executor for TokioExecutor {
+//!   fn spawn(&self, future: impl std::future::Future<Output = ()> + Send + 'static) {
+//!        tokio::spawn(future);
+//!    }
+//! }
 //! #[tokio::main]
 //! async fn main() {
 //!     let env = std::env::var("AMQP_ADDR").unwrap();
 //!     let mq = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
-//!     mq.push(TestJob(42)).await.unwrap();
-//!     Monitor::new()
+//!     mq.enqueue(TestJob(42)).await.unwrap();
+//!     Monitor::<TokioExecutor>::new()
 //!         .register(
 //!             WorkerBuilder::new("rango-amigo")
 //!                 .with_mq(mq)
@@ -85,28 +92,34 @@
 mod ack;
 
 use apalis_core::{
-    error::{JobError, JobStreamError},
-    job::{Job, JobStreamResult},
-    mq::MessageQueue,
-    request::JobRequest,
+    mq::{Message, MessageQueue},
+    poller::Poller,
+    request::{Request, RequestStream},
     worker::WorkerId,
+    Backend,
 };
 use deadpool_lapin::{Manager, Pool};
 use futures::StreamExt;
 use lapin::{
     options::{BasicConsumeOptions, BasicPublishOptions, QueueDeclareOptions},
     types::FieldTable,
-    BasicProperties, Channel, ConnectionProperties, Queue,
+    BasicProperties, Channel, ConnectionProperties, Error, Queue,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::{fmt::Debug, marker::PhantomData};
+use std::{
+    fmt::Debug,
+    io::{self, ErrorKind},
+    marker::PhantomData,
+    sync::Arc,
+};
+use tower::{layer::util::Identity, ServiceBuilder};
 
 #[derive(Debug)]
 /// A wrapper around a `lapin` AMQP channel that implements message queuing functionality.
-pub struct AmqpBackend<J> {
+pub struct AmqpBackend<M> {
     channel: Channel,
     queue: Queue,
-    job_type: PhantomData<J>,
+    job_type: PhantomData<M>,
 }
 
 impl<J> Clone for AmqpBackend<J> {
@@ -119,61 +132,72 @@ impl<J> Clone for AmqpBackend<J> {
     }
 }
 
-#[async_trait::async_trait]
-impl<J: Job + Serialize + DeserializeOwned + Send + Sync + 'static> MessageQueue<J>
-    for AmqpBackend<J>
+impl<M: Message + Serialize + DeserializeOwned + Send + Sync + 'static> MessageQueue<M>
+    for AmqpBackend<M>
 {
+    type Error = Error;
     /// Publishes a new job to the queue.
     ///
     /// This function serializes the provided job data to a JSON string and publishes it to the
     /// queue with the name of the job type `J::NAME`.
-    async fn push(&self, data: J) -> Result<(), JobError> {
+    async fn enqueue(&self, data: M) -> Result<(), Self::Error> {
         let channel = self.channel.clone();
 
         let _confirmation = channel
             .basic_publish(
                 "",
-                J::NAME,
+                M::NAME,
                 BasicPublishOptions::default(),
-                &serde_json::to_vec(&JobRequest::new(data))
-                    .map_err(|e| JobError::Failed(e.into()))?,
+                &serde_json::to_vec(&Request::new(data)).map_err(|e| {
+                    Error::IOError(Arc::new(io::Error::new(ErrorKind::InvalidData, e)))
+                })?,
                 BasicProperties::default(),
             )
-            .await
-            .map_err(|e| JobError::Failed(e.into()))?
-            .await
-            .map_err(|e| JobError::Failed(e.into()))?;
+            .await?
+            .await?;
         Ok(())
     }
-    /// Consumes jobs from the queue and returns a `BoxStream` of `JobRequest<J>` objects.
-    ///
-    /// This function creates a new asynchronous stream using the `async_stream` crate that
-    /// continuously consumes messages from the queue and converts them to `JobRequest<J>` objects
-    /// using `serde_json::from_slice`.
-    fn consume(&self, worker: &WorkerId) -> JobStreamResult<J> {
+
+    async fn size(&self) -> Result<usize, Self::Error> {
+        todo!()
+    }
+
+    async fn dequeue(&self) -> Result<Option<M>, Self::Error> {
+        Ok(None)
+    }
+}
+
+impl<M: DeserializeOwned + Message + Send + 'static> Backend<Request<M>> for AmqpBackend<M> {
+    type Layer = ServiceBuilder<Identity>;
+    type Stream = RequestStream<Request<M>>;
+    fn common_layer(&self, _worker: WorkerId) -> Self::Layer {
+        ServiceBuilder::new()
+    }
+
+    fn poll(self, worker: WorkerId) -> Poller<Self::Stream> {
         let channel = self.channel.clone();
         let worker = worker.clone();
         let stream = async_stream::stream! {
             let mut consumer = channel
             .basic_consume(
-                J::NAME,
+                M::NAME,
                 &worker.to_string(),
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
             .await
-            .map_err(|e| JobStreamError::BrokenPipe(e.into()))?;
+            .map_err(|e| apalis_core::error::Error::SourceError(e.into()))?;
 
             while let Some(Ok(item)) = consumer.next().await {
                 let bytes = item.data;
-                let mut job: JobRequest<J> = serde_json::from_slice(&bytes)
-                    .map_err(|e| JobStreamError::BrokenPipe(e.into()))?;
+                let mut job: Request<M> = serde_json::from_slice(&bytes)
+                    .map_err(|e| apalis_core::error::Error::SourceError(e.into()))?;
                 job.insert(DeliveryTag(item.delivery_tag)); // requires extensions
                 yield Ok(Some(job));
 
             }
         };
-        stream.boxed()
+        Poller::new(stream.boxed(), async {})
     }
 }
 
@@ -181,7 +205,7 @@ impl<J: Job + Serialize + DeserializeOwned + Send + Sync + 'static> MessageQueue
 /// A wrapper for the the job to be acknowledged.
 pub struct DeliveryTag(u64);
 
-impl<J: Job + Serialize + DeserializeOwned + Send + 'static> AmqpBackend<J> {
+impl<M: Message + Serialize + DeserializeOwned + Send + 'static> AmqpBackend<M> {
     /// Constructs a new instance of `AmqpBackend` from a `lapin` channel.
     pub fn new(channel: Channel, queue: Queue) -> Self {
         Self {
@@ -218,7 +242,7 @@ impl<J: Job + Serialize + DeserializeOwned + Send + 'static> AmqpBackend<J> {
         let channel = amqp_conn.create_channel().await?;
         let queue = channel
             .queue_declare(
-                J::NAME,
+                M::NAME,
                 QueueDeclareOptions::default(),
                 FieldTable::default(),
             )
@@ -230,24 +254,24 @@ impl<J: Job + Serialize + DeserializeOwned + Send + 'static> AmqpBackend<J> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use apalis_core::{
-        builder::WorkerBuilder, builder::WorkerFactoryFn, context::JobContext, mq::WithMq,
-    };
+    use apalis_core::{builder::WorkerBuilder, builder::WorkerFactoryFn};
     use serde::Deserialize;
 
     #[derive(Debug, Serialize, Deserialize)]
-    struct TestJob;
+    struct TestMessage;
 
-    impl Job for TestJob {
-        const NAME: &'static str = "TestJob";
+    impl Message for TestMessage {
+        const NAME: &'static str = "TestMessage";
     }
 
-    async fn test_job(_job: TestJob, _ctx: JobContext) {}
+    async fn test_job(_job: TestMessage) {}
 
     #[tokio::test]
     async fn it_works() {
         let env = std::env::var("AMQP_ADDR").unwrap();
-        let amqp_backend = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
+        let amqp_backend = AmqpBackend::<TestMessage>::new_from_addr(&env)
+            .await
+            .unwrap();
         let _worker = WorkerBuilder::new("rango-amigo")
             .with_mq(amqp_backend)
             .build_fn(test_job);
