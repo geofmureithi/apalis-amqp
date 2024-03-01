@@ -13,7 +13,7 @@ categories = ["database"]
 
 [dependencies]
 async-trait = "0.1"
-apalis-core = { version = "0.4.7", features = ["mq"] }
+apalis-core = { version = "0.5.0", features = ["mq"] }
 serde = "1"
 serde_json = "1"
 deadpool = "0.10.0"
