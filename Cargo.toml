@@ -13,7 +13,7 @@ categories = ["database"]
 
 [dependencies]
 apalis-core = { version = "0.5" }
-serde = "1"
+serde = "1.0.200"
 serde_json = "1"
 deadpool = "0.10.0"
 deadpool-lapin = "0.11.0"
