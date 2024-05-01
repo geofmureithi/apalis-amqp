@@ -26,7 +26,7 @@ tracing = "0.1"
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 apalis-core = { version = "0.5" }
-apalis = { version = "0.5", default-features = false, features = ["retry"] }
+apalis = { version = "0.5.1", default-features = false, features = ["retry"] }
 futures-util = "0.3"
 
 
