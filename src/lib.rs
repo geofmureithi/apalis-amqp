@@ -100,7 +100,7 @@ use std::{
     sync::Arc,
 };
 use tower::layer::util::Identity;
-use utils::{AmqpMessage, Config};
+use utils::{AmqpMessage, Config, Context};
 
 /// Contains basic utilities for handling config and messages
 pub mod utils;
@@ -132,17 +132,15 @@ impl<M: Serialize + DeserializeOwned + Send + Sync + 'static> MessageQueue<M> fo
     /// This function serializes the provided job data to a JSON string and publishes it to the
     /// queue with the namespace configured.
     async fn enqueue(&mut self, message: M) -> Result<(), Self::Error> {
-
-
         let _confirmation = self
             .channel
             .basic_publish(
                 "",
                 self.config.namespace().as_str(),
                 BasicPublishOptions::default(),
-                &serde_json::to_vec(&Request::new(message)).map_err(|e| {
-                    Error::IOError(Arc::new(io::Error::new(ErrorKind::InvalidData, e)))
-                })?,
+                &serde_json::to_vec(&AmqpMessage::new(message, Context::default())).map_err(
+                    |e| Error::IOError(Arc::new(io::Error::new(ErrorKind::InvalidData, e))),
+                )?,
                 BasicProperties::default(),
             )
             .await?
