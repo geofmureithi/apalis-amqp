@@ -1,14 +1,21 @@
-use apalis_core::{layers::Ack, mq::Message, worker::WorkerId};
+use apalis_core::layers::Ack;
 use lapin::{options::BasicAckOptions, Error};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{AmqpBackend, DeliveryTag};
+use crate::{utils::Context, AmqpBackend};
 
-impl<M: Send + Sync + Serialize + DeserializeOwned + Message + 'static> Ack<M> for AmqpBackend<M> {
-    type Error = Error;
-    type Acknowledger = DeliveryTag;
-    async fn ack(&self, _worker_id: &WorkerId, tag: &DeliveryTag) -> Result<(), Error> {
-        let channel = self.channel().clone();
-        channel.basic_ack(tag.0, BasicAckOptions::default()).await
+impl<M: Send + Sync + Serialize + DeserializeOwned + 'static, Res: Send + Sync + 'static>
+    Ack<M, Res> for AmqpBackend<M>
+{
+    type AckError = Error;
+    type Context = Context;
+    async fn ack(
+        &mut self,
+        ctx: &Context,
+        _res: &Result<Res, apalis_core::error::Error>,
+    ) -> Result<(), Error> {
+        self.channel
+            .basic_ack(ctx.tag().value(), BasicAckOptions::default())
+            .await
     }
 }

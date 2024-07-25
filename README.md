@@ -28,19 +28,20 @@
 
 ## Overview
 
-`apalis-amqp` is a Rust crate that provides utilities for integrating `apalis` with AMQP message queuing systems. It includes an `AmqpBackend` implementation for use with the pushing and popping jobs, as well as a `MessageQueue<J>` implementation for consuming messages from an AMQP queue and passing them to `ReadyWorker` for processing.
+`apalis-amqp` is a Rust crate that provides utilities for integrating `apalis` with AMQP message queuing systems. It includes an `AmqpBackend` implementation for use with the pushing and popping messages, as well as a `MessageQueue<M>` implementation for consuming messages from an AMQP queue.
 
 ## Features
 
 - Integration between apalis and AMQP message queuing systems.
-- Easy creation of AMQP-backed job queues.
-- Simple consumption of AMQP messages as apalis jobs.
+- Easy creation of AMQP-backed message queues.
+- Simple consumption of AMQP messages as apalis messages.
 - Supports message acknowledgement and rejection via `tower` layers.
 - Supports all apalis middleware such as rate-limiting, timeouts, filtering, sentry, prometheus etc.
+- Supports ack messages and allows custom saving results to other backends
 
 ## Getting started
 
-Add apalis-amqp to your Cargo.toml file:
+Before attempting to connect, you need a working amqp backend. We can easily setup using Docker:
 
 ### Setup RabbitMq
 
@@ -50,68 +51,48 @@ docker run -p 15672:15672 -p 5672:5672 -e RABBITMQ_DEFAULT_USER=apalis -e RABBIT
 
 ### Setup the rust code
 
+Add apalis-amqp to your Cargo.toml
+
 ```toml
 [dependencies]
-apalis-core = "0.5"
-apalis-amqp = "0.3"
+apalis = "0.6"
+apalis-amqp = "0.4"
 serde = "1"
 ```
 
 Then add to your main.rs
 
 ```rust
-use apalis_amqp::AmqpBackend;
-use apalis_core::builder::WorkerFactoryFn;
-use apalis_core::mq::Message;
-use apalis_core::{
-    builder::WorkerBuilder, layers::extensions::Data, monitor::Monitor, mq::MessageQueue,
-} ;
-use serde::{Deserialize, Serialize};
+ use apalis::prelude::*;
+ use apalis_amqp::AmqpBackend;
+ use serde::{Deserialize, Serialize};
 
-mod policy;
+ #[derive(Debug, Serialize, Deserialize)]
+ struct TestMessage(usize);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct TestMessage(usize);
+ async fn test_message(message: TestMessage) {
+     dbg!(message);
+ }
 
-impl Message for TestMessage {
-    const NAME: &'static str = "TestMessage";
-}
-
-async fn test_job(job: TestMessage, count: Data<usize>) {
-    dbg!(job);
-    dbg!(count);
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct TokioExecutor;
-
-impl apalis_core::executor::Executor for TokioExecutor {
-    fn spawn(&self, future: impl std::future::Future<Output = ()> + Send + 'static) {
-        tokio::spawn(future);
-    }
-}
-
-#[tokio::main]
-async fn main() {
-    let env = std::env::var("AMQP_ADDR").unwrap();
-    let mq = AmqpBackend::<TestMessage>::new_from_addr(&env)
-        .await
-        .unwrap();
-    // add some jobs
-    mq.enqueue(TestMessage(42)).await.unwrap();
-    Monitor::<TokioExecutor>::new()
-        .register_with_count(3, {
-            WorkerBuilder::new(format!("rango-amigo"))
-                .data(0usize)
-                .with_mq(mq.clone())
-                .build_fn(test_job)
-        })
-        .run()
-        .await
-        .unwrap();
-}
-
+ #[tokio::main]
+ async fn main() {
+     let env = std::env::var("AMQP_ADDR").unwrap();
+     let mq = AmqpBackend::<TestMessage>::new_from_addr(&env).await.unwrap();
+     // This can be in another place in the program
+     mq.enqueue(TestMessage(42)).await.unwrap();
+     Monitor::<TokioExecutor>::new()
+         .register(
+             WorkerBuilder::new("rango-amigo")
+                 .backend(mq)
+                 .build_fn(test_message),
+         )
+         .run()
+         .await
+         .unwrap();
+ }
 ```
+
+Run your code and profit!
 
 ## License
 
