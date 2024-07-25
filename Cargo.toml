@@ -1,6 +1,6 @@
 [package]
 name = "apalis-amqp"
-version = "0.3.0"
+version = "0.4.0-rc.1"
 edition = "2021"
 description = "Message queuing utilities for Rust using apalis and Amqp"
 authors = ["Geoffrey Mureithi <mureithinjuguna@gmail.com>"]
@@ -12,7 +12,7 @@ keywords = ["message", "worker", "amqp"]
 categories = ["database"]
 
 [dependencies]
-apalis-core = { version = "0.5" }
+apalis-core = { version = "0.6.0-rc.5" }
 serde = "1"
 serde_json = "1"
 deadpool = "0.10.0"
@@ -25,8 +25,11 @@ tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
-apalis-core = { version = "0.5" }
-apalis = { version = "0.5", default-features = false, features = ["retry"] }
+apalis-core = { version = "0.6.0-rc.5" }
+apalis = { version = "0.6.0-rc.5", default-features = false, features = [
+    "retry",
+    "tokio-comp",
+] }
 futures-util = "0.3"
 
 
