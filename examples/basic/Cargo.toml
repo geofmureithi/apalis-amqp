@@ -8,7 +8,7 @@ publish = false
 serde = "1"
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-apalis-core = { version = "0.5" }
+apalis-core = { version = "0.6.0-rc.5" }
 futures = "0.3"
 apalis-amqp = { path = "../../" }
 tower = { version = "0.4", features = ["retry"] }
