@@ -1,5 +1,3 @@
-use apalis_core::data::Extensions;
-use apalis_core::request::Request;
 use apalis_core::task::attempt::Attempt;
 use apalis_core::task::namespace::Namespace;
 use apalis_core::task::task_id::TaskId;
@@ -44,30 +42,14 @@ impl Config {
 
 /// The context of a message
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct Context {
-    task_id: TaskId,
+pub struct AmqpContext {
     tag: DeliveryTag,
-    attempt: Attempt,
 }
 
-impl Context {
+impl AmqpContext {
     /// Creates a new `Context` instance with the given parameters.
-    pub fn new(task_id: TaskId, tag: DeliveryTag, attempt: Attempt) -> Self {
-        Context {
-            task_id,
-            tag,
-            attempt,
-        }
-    }
-
-    /// Gets the task ID.
-    pub fn task_id(&self) -> &TaskId {
-        &self.task_id
-    }
-
-    /// Sets the task ID.
-    pub fn set_task_id(&mut self, task_id: TaskId) {
-        self.task_id = task_id;
+    pub fn new(tag: DeliveryTag) -> Self {
+        AmqpContext { tag }
     }
 
     /// Gets the delivery tag.
@@ -78,16 +60,6 @@ impl Context {
     /// Sets the delivery tag.
     pub fn set_tag(&mut self, tag: DeliveryTag) {
         self.tag = tag;
-    }
-
-    /// Gets the attempt.
-    pub fn attempt(&self) -> &Attempt {
-        &self.attempt
-    }
-
-    /// Sets the attempt.
-    pub fn set_attempt(&mut self, attempt: Attempt) {
-        self.attempt = attempt;
     }
 }
 
@@ -114,42 +86,12 @@ impl DeliveryTag {
 
 /// The representation that is sent in the underlying connection
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct AmqpMessage<T> {
-    msg: T,
-    ctx: Context,
-}
-
-impl<T> AmqpMessage<T> {
-    /// Creates a new `AmqpMessage` instance with the given message and context.
-    pub fn new(msg: T, ctx: Context) -> Self {
-        AmqpMessage { msg, ctx }
-    }
-
-    /// Gets the message.
-    pub fn msg(&self) -> &T {
-        &self.msg
-    }
-
-    /// Sets the message.
-    pub fn set_msg(&mut self, msg: T) {
-        self.msg = msg;
-    }
-
-    /// Gets the context.
-    pub fn ctx(&self) -> &Context {
-        &self.ctx
-    }
-
-    /// Sets the context.
-    pub fn set_ctx(&mut self, ctx: Context) {
-        self.ctx = ctx;
-    }
-}
-
-impl<T> Into<Request<T>> for AmqpMessage<T> {
-    fn into(self) -> Request<T> {
-        let mut data = Extensions::default();
-        data.insert(self.ctx);
-        Request::new_with_data(self.msg, data)
-    }
+pub struct AmqpMessage<M> {
+    /// The inner part of the message
+    pub inner: M,
+    /// The task id allocated to the message
+    pub task_id: TaskId,
+    /// The current attempt of the message
+    pub attempt: Attempt,
+    pub(crate) _priv: (),
 }
