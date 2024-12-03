@@ -27,9 +27,7 @@ impl apalis_core::executor::Executor for TokioExecutor {
 #[tokio::main]
 async fn main() {
     let env = std::env::var("AMQP_ADDR").unwrap();
-    let mut mq = AmqpBackend::<TestMessage>::new_from_addr(&env)
-        .await
-        .unwrap();
+    let mut mq = AmqpBackend::new_from_addr(&env).await.unwrap();
     // add some jobs
     mq.enqueue(TestMessage(42)).await.unwrap();
     Monitor::<TokioExecutor>::new()
