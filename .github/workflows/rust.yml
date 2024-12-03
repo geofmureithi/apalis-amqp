@@ -1,4 +1,4 @@
-name: Rust
+name: CI - Test with RabbitMQ
 
 on:
   push:
@@ -17,13 +17,15 @@ jobs:
       rabbitmq:
         image: rabbitmq:3-management
         ports:
-          - 5672:5672 # Default RabbitMQ port
-          - 15672:15672 # RabbitMQ management UI port
+          - 5672:5672
+          - 15672:15672
         options: >-
           --health-cmd "rabbitmqctl status"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          rabbitmqctl add_vhost my_vhost
+          rabbitmqctl set_permissions -p my_vhost guest ".*" ".*" ".*"
 
     steps:
     - uses: actions/checkout@v4
@@ -32,4 +34,4 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
       env:
-        AMQP_ADDR: amqp://guest:guest@localhost:5672/
+        AMQP_ADDR: amqp://guest:guest@localhost:5672/my_vhost
