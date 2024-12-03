@@ -30,7 +30,7 @@ async fn main() {
     let mut mq = AmqpBackend::new_from_addr(&env).await.unwrap();
     // add some jobs
     mq.enqueue(TestMessage(42)).await.unwrap();
-    Monitor::<TokioExecutor>::new()
+    Monitor::new()
         .register_with_count(3, {
             WorkerBuilder::new(format!("rango-amigo"))
                 .data(0usize)

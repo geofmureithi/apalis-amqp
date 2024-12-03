@@ -80,7 +80,7 @@ Then add to your main.rs
      let mq = AmqpBackend::<TestMessage>::new_from_addr(&env).await.unwrap();
      // This can be in another place in the program
      mq.enqueue(TestMessage(42)).await.unwrap();
-     Monitor::<TokioExecutor>::new()
+     Monitor::new()
          .register(
              WorkerBuilder::new("rango-amigo")
                  .backend(mq)

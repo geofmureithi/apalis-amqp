@@ -45,7 +45,7 @@
 //!     let env = std::env::var("AMQP_ADDR").unwrap();
 //!     let mq = AmqpBackend::<TestJob>::new_from_addr(&env).await.unwrap();
 //!     mq.enqueue(TestJob(42)).await.unwrap();
-//!     Monitor::<TokioExecutor>::new()
+//!     Monitor::new()
 //!         .register(
 //!             WorkerBuilder::new("rango-amigo")
 //!                 .backend(mq)
