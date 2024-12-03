@@ -4,7 +4,6 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,12 +15,15 @@ jobs:
 
     services:
       rabbitmq:
-        image: rabbitmq:3.8
-        env:
-          RABBITMQ_DEFAULT_USER: guest
-          RABBITMQ_DEFAULT_PASS: guest
+        image: rabbitmq:3-management
         ports:
-          - 5672
+          - 5672:5672 # Default RabbitMQ port
+          - 15672:15672 # RabbitMQ management UI port
+        options: >-
+          --health-cmd "rabbitmqctl status"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
     - uses: actions/checkout@v4
@@ -30,4 +32,4 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
       env:
-        AMQP_ADDR: amqp://guest:guest@127.0.0.1:5672/%2f
+        AMQP_ADDR: amqp://guest:guest@localhost:5672/
